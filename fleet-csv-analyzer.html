@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Analisador Frota - Cole CSV</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-slate-50 p-4">
+<div class="max-w-[1600px] mx-auto space-y-4">
+<div class="bg-white rounded-2xl border p-5">
+<h1 class="text-xl font-bold">📋 Cole sua planilha CSV aqui - Apuração Imediata</h1>
+<p class="text-sm text-slate-600 mt-1">Abra seu CSV no Bloco de Notas, copie tudo (Ctrl+A, Ctrl+C) e cole abaixo. Suporta ; ou , como separador, e R$ 1.234,56</p>
+<textarea id="csvInput" class="w-full h-[200px] mt-3 p-3 rounded-xl border font-mono text-[12px]" placeholder="Cole aqui o conteúdo do seu CSV... Ex:
+Placa;Veículo;Data;Tipo;Serviço;Custo
+ABC1D23;Fiat Strada;15/01/2026;Preventiva;Troca óleo;R$ 485,00
+..."></textarea>
+<div class="mt-3 flex gap-2">
+<button onclick="parse()" class="px-5 h-10 rounded-xl bg-sky-600 text-white font-semibold">🚀 Analisar e Gerar Dashboard</button>
+<button onclick="document.getElementById('csvInput').value=''" class="px-4 h-10 rounded-xl border bg-white">Limpar</button>
+</div>
+<div id="status" class="mt-3 text-sm"></div>
+</div>
+
+<div id="dashboard" class="hidden space-y-4">
+<div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+<div class="col-span-2 bg-slate-900 text-white rounded-2xl p-4"><p class="text-[11px] uppercase opacity-60">Custo Total</p><p id="kpiTotal" class="text-2xl font-bold mt-1">R$ 0</p></div>
+<div class="bg-white border rounded-2xl p-4"><p class="text-[11px] uppercase text-slate-500">Veículos</p><p id="kpiVeh" class="text-xl font-bold mt-1">0</p></div>
+<div class="bg-white border rounded-2xl p-4"><p class="text-[11px] uppercase text-slate-500">Manutenções</p><p id="kpiMan" class="text-xl font-bold mt-1">0</p></div>
+<div class="bg-white border rounded-2xl p-4"><p class="text-[11px] uppercase text-slate-500">Ticket Médio</p><p id="kpiAvg" class="text-xl font-bold mt-1">R$ 0</p></div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+<div class="bg-white border rounded-2xl p-4"><h3 class="font-bold text-sm mb-3">Evolução Mensal</h3><div class="h-[250px]"><canvas id="monthChart"></canvas></div></div>
+<div class="bg-white border rounded-2xl p-4"><h3 class="font-bold text-sm mb-3">Top Veículos</h3><div class="h-[250px]"><canvas id="vehChart"></canvas></div></div>
+</div>
+
+<div class="bg-white border rounded-2xl p-4"><h3 class="font-bold text-sm mb-3">Insights Gerenciais</h3><div id="insights" class="text-sm space-y-2"></div></div>
+
+<div class="bg-white border rounded-2xl overflow-hidden">
+<div class="p-4 border-b flex justify-between items-center"><h3 class="font-bold text-sm">Detalhamento</h3><span id="count" class="text-xs px-2 py-1 rounded-full bg-slate-100"></span></div>
+<div class="overflow-auto max-h-[400px]"><table class="w-full text-xs"><thead id="thead" class="bg-slate-50 text-[10px] uppercase"></thead><tbody id="tbody"></tbody></table></div>
+</div>
+</div>
+</div>
+
+<script>
+let raw=[], cols=[], charts={};
+const fmtBRL = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'});
+function parseCost(v){
+  if(!v) return 0;
+  let s=String(v).replace(/R\$/gi,'').trim();
+  if(s.includes('.') && s.includes(',')) s=s.replace(/\./g,'').replace(',','.');
+  else if(s.includes(',')) s=s.replace(',','.');
+  s=s.replace(/[^0-9.\-]/g,'');
+  const n=parseFloat(s); return isNaN(n)?0:n;
+}
+function parseDateStr(v){
+  if(!v) return null;
+  let s=String(v).trim();
+  let m=s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if(m){ let d=parseInt(m[1]), mo=parseInt(m[2])-1, y=parseInt(m[3]); if(y<100) y+=2000; return new Date(y,mo,d); }
+  m=s.match(/(\d{1,2})[\/\-](\d{4})/); if(m) return new Date(parseInt(m[2]), parseInt(m[1])-1,1);
+  const d=new Date(s); return isNaN(d)?null:d;
+}
+
+function parse(){
+  const text=document.getElementById('csvInput').value.trim();
+  if(!text){ alert('Cole o CSV'); return; }
+  const lines=text.split(/\r?\n/).filter(l=>l.trim());
+  // detect separator ; or , or \t
+  const first=lines[0];
+  let sep=';';
+  if((first.match(/;/g)||[]).length < (first.match(/,/g)||[]).length) sep=',';
+  if(first.includes('\t')) sep='\t';
+  const data=lines.map(l=>{
+    // handle quoted fields
+    const res=[]; let cur='', inQ=false;
+    for(let i=0;i<l.length;i++){
+      const ch=l[i];
+      if(ch=='"'){ inQ=!inQ; }
+      else if(ch==sep && !inQ){ res.push(cur.trim()); cur=''; }
+      else cur+=ch;
+    }
+    res.push(cur.trim());
+    return res.map(c=>c.replace(/^"|"$/g,'').trim());
+  });
+  cols=data[0];
+  raw=data.slice(1).map(r=>{
+    const o={}; cols.forEach((c,i)=>o[c]=r[i]||''); return o;
+  });
+  document.getElementById('status').innerHTML=`✅ ${raw.length} registros, ${cols.length} colunas detectadas: ${cols.join(', ')}`;
+  render();
+}
+
+function render(){
+  document.getElementById('dashboard').classList.remove('hidden');
+  // detect cost, vehicle, date
+  const lower=cols.map(c=>c.toLowerCase());
+  const find=k=>{ for(let key of k){ const idx=lower.findIndex(h=>h.includes(key)); if(idx!==-1) return cols[idx]; } return cols[0]; };
+  const costCol=find(['custo','valor','total','preço','r$']);
+  const vehCol=find(['placa','veiculo','veículo','frota']);
+  const dateCol=find(['data','mês','mes','ano']);
+  const typeCol=find(['tipo','manut']);
+
+  const total=raw.reduce((s,r)=>s+parseCost(r[costCol]),0);
+  const avg=raw.length?total/raw.length:0;
+  const vehs=new Set(raw.map(r=>r[vehCol]).filter(Boolean));
+  document.getElementById('kpiTotal').textContent=fmtBRL.format(total);
+  document.getElementById('kpiVeh').textContent=vehs.size;
+  document.getElementById('kpiMan').textContent=raw.length;
+  document.getElementById('kpiAvg').textContent=fmtBRL.format(avg);
+  document.getElementById('count').textContent=`${raw.length} registros`;
+
+  // monthly
+  const monthly={};
+  raw.forEach(r=>{
+    const d=parseDateStr(r[dateCol]);
+    const key=d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`:'Sem data';
+    monthly[key]=(monthly[key]||0)+parseCost(r[costCol]);
+  });
+  const months=Object.keys(monthly).filter(k=>k!=='Sem data').sort();
+  const monthData=months.map(k=>{
+    const [y,m]=k.split('-'); const mm=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    return {name:`${mm[parseInt(m)-1]}/${y}`, custo:monthly[k]};
+  });
+
+  // by vehicle
+  const byVeh={};
+  raw.forEach(r=>{ const v=r[vehCol]||'Desconhecido'; byVeh[v]=(byVeh[v]||0)+parseCost(r[costCol]); });
+  const topVeh=Object.entries(byVeh).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([name,custo])=>({name:name.slice(0,12), custo}));
+
+  // charts
+  Object.values(charts).forEach(c=>{try{c.destroy();}catch{}});
+  const ctxM=document.getElementById('monthChart').getContext('2d');
+  charts.month=new Chart(ctxM,{type:'line',data:{labels:monthData.map(d=>d.name),datasets:[{label:'Custo',data:monthData.map(d=>d.custo),borderColor:'#0ea5e9',backgroundColor:'rgba(14,165,233,0.1)',fill:true,tension:0.4}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+  const ctxV=document.getElementById('vehChart').getContext('2d');
+  charts.veh=new Chart(ctxV,{type:'bar',data:{labels:topVeh.map(d=>d.name),datasets:[{label:'Custo',data:topVeh.map(d=>d.custo),backgroundColor:'#ef4444'}]},options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+
+  // insights
+  const sortedVeh=Object.entries(byVeh).sort((a,b)=>b[1]-a[1]);
+  const top3Pct=sortedVeh.slice(0,3).reduce((s,[,v])=>s+v,0)/total*100;
+  document.getElementById('insights').innerHTML=`
+    <p>💰 Custo total <b>${fmtBRL.format(total)}</b> em ${raw.length} manutenções, ticket médio ${fmtBRL.format(avg)}</p>
+    <p>🚛 ${vehs.size} veículos, Top 3 consomem ${top3Pct.toFixed(1)}% do orçamento</p>
+    <p>⚠️ Veículo crítico: <b>${sortedVeh[0]?.[0]}</b> com ${fmtBRL.format(sortedVeh[0]?.[1]||0)} (${((sortedVeh[0]?.[1]||0)/total*100).toFixed(1)}%)</p>
+    <p>📈 Maior custo mensal: ${monthData.sort((a,b)=>b.custo-a.custo)[0]?.name} com ${fmtBRL.format(monthData.sort((a,b)=>b.custo-a.custo)[0]?.custo||0)}</p>
+  `;
+
+  // table
+  document.getElementById('thead').innerHTML='<tr>'+cols.map(c=>`<th class="px-3 py-2 text-left">${c}</th>`).join('')+'</tr>';
+  document.getElementById('tbody').innerHTML=raw.slice(0,100).map(r=>'<tr class="border-t">'+cols.map(c=>`<td class="px-3 py-1.5 whitespace-nowrap">${c.toLowerCase().includes('custo')||c.toLowerCase().includes('valor')?fmtBRL.format(parseCost(r[c])):String(r[c]||'').slice(0,50)}</td>`).join('')+'</tr>').join('');
+
+  // try save to server
+  try{
+    const blob=new Blob([JSON.stringify({cols, raw: raw.slice(0,500)})],{type:'application/json'});
+    fetch('/api/save-fleet',{method:'POST', body: blob});
+    fetch('https://8001-'+location.hostname.split('-').slice(1).join('-')+'/api/save-fleet',{method:'POST', body: JSON.stringify(raw)});
+  }catch(e){}
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Apuração Frota 2026 - Dashboard Gerencial</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter','sans-serif'], mono: ['JetBrains Mono','monospace'] },
+      colors: {
+        brand: { 50:'#f0f9ff', 100:'#e0f2fe', 500:'#0ea5e9', 600:'#0284c7', 700:'#0369a1' }
+      }
+    }
+  }
+}
+</script>
+<style>
+* { font-family: Inter, sans-serif; }
+.glass { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+.scrollbar-thin::-webkit-scrollbar { width:6px; height:6px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:999px; }
+.dark .scrollbar-thin::-webkit-scrollbar-thumb { background:#334155; }
+.card-hover { transition: all .2s ease; }
+.card-hover:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1); }
+</style>
+</head>
+<body class="bg-[#f8fafc] dark:bg-[#020617] text-slate-900 dark:text-slate-100 min-h-screen transition-colors">
+<!-- Header -->
+<header class="sticky top-0 z-40 border-b border-slate-200/70 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 glass">
+  <div class="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 h-[64px] flex items-center justify-between">
+    <div class="flex items-center gap-4">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white font-bold shadow-lg shadow-sky-500/20">
+        <i class="fa-solid fa-truck-field"></i>
+      </div>
+      <div>
+        <h1 class="font-bold text-[15px] leading-none tracking-tight">FROTA 2026</h1>
+        <p class="text-[11px] text-slate-500 dark:text-slate-400 font-medium tracking-wide uppercase mt-1">Apuração Gerencial • Dashboard</p>
+      </div>
+      <div class="hidden md:flex items-center gap-2 ml-6 pl-6 border-l border-slate-200 dark:border-slate-800">
+        <span class="text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-semibold border border-emerald-200 dark:border-emerald-800 flex items-center gap-1.5">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> AO VIVO
+        </span>
+        <span id="lastUpdate" class="text-[11px] text-slate-500 dark:text-slate-400"></span>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <button id="themeToggle" class="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-800 transition">
+        <i class="fa-solid fa-moon text-sm dark:hidden"></i>
+        <i class="fa-solid fa-sun text-sm hidden dark:block"></i>
+      </button>
+      <button onclick="exportExcel()" class="hidden md:flex items-center gap-2 px-3.5 h-9 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[13px] font-semibold hover:opacity-90 transition">
+        <i class="fa-solid fa-file-excel"></i> Excel
+      </button>
+      <button onclick="exportPDF()" class="flex items-center gap-2 px-3.5 h-9 rounded-xl bg-sky-600 text-white text-[13px] font-semibold hover:bg-sky-700 transition shadow shadow-sky-600/20">
+        <i class="fa-solid fa-file-pdf"></i> <span class="hidden md:inline">Relatório PDF</span><span class="md:hidden">PDF</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="max-w-[1600px] mx-auto px-4 md:px-6 lg:px-8 py-6 space-y-6">
+  <!-- Upload Zone -->
+  <div id="uploadZone" class="group relative rounded-[20px] border-2 border-dashed border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/50 p-6 md:p-8 hover:border-sky-400 dark:hover:border-sky-600 hover:bg-sky-50/30 dark:hover:bg-sky-950/20 transition-all cursor-pointer">
+    <input type="file" id="fileInput" accept=".html,.htm,.csv,.xlsx,.xls" class="hidden">
+    <div class="flex flex-col md:flex-row items-center gap-6">
+      <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center text-white text-xl shadow-lg shadow-sky-500/20 group-hover:scale-105 transition-transform">
+        <i class="fa-solid fa-cloud-arrow-up"></i>
+      </div>
+      <div class="flex-1 text-center md:text-left">
+        <h3 class="font-bold text-[15px]">Arraste sua planilha aqui ou clique para selecionar</h3>
+        <p class="text-[13px] text-slate-500 dark:text-slate-400 mt-1">Suporta HTML exportado do Excel, CSV, XLSX • Detecção automática de colunas • <span class="font-semibold text-slate-700 dark:text-slate-300">O arquivo "2026 att .html" será lido automaticamente</span></p>
+        <div class="flex flex-wrap gap-2 mt-3 justify-center md:justify-start">
+          <span class="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">.HTML</span>
+          <span class="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">.CSV</span>
+          <span class="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">.XLSX</span>
+          <span class="text-[11px] px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-medium"><i class="fa-solid fa-wand-magic-sparkles mr-1"></i>Auto-parser inteligente</span>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="loadDemo()" class="px-4 h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[13px] font-semibold hover:bg-slate-50 dark:hover:bg-slate-700 transition">
+          <i class="fa-solid fa-flask mr-1.5"></i>Ver Demo
+        </button>
+        <button class="px-5 h-10 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[13px] font-semibold">
+          Selecionar Arquivo
+        </button>
+      </div>
+    </div>
+    <div id="fileInfo" class="hidden mt-5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 flex items-center gap-3 text-[13px]">
+      <i class="fa-solid fa-circle-check text-emerald-600 dark:text-emerald-400"></i>
+      <span id="fileInfoText" class="font-medium text-emerald-800 dark:text-emerald-200"></span>
+      <button onclick="clearData()" class="ml-auto text-[12px] px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">Limpar</button>
+    </div>
+  </div>
+
+  <!-- KPI Grid -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 md:gap-4">
+    <div class="col-span-2 lg:col-span-2 xl:col-span-2 rounded-[18px] bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-900 dark:to-black text-white p-5 relative overflow-hidden card-hover">
+      <div class="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/5"></div>
+      <div class="absolute -right-6 -bottom-6 w-32 h-32 rounded-full bg-sky-500/20 blur-2xl"></div>
+      <div class="relative">
+        <div class="flex items-center justify-between">
+          <p class="text-[11px] font-semibold tracking-widest uppercase opacity-60">CUSTO TOTAL 2026</p>
+          <span class="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center"><i class="fa-solid fa-sack-dollar text-[12px]"></i></span>
+        </div>
+        <p id="kpiTotal" class="mt-3 text-[28px] font-extrabold tracking-tight leading-none">R$ 0,00</p>
+        <div class="mt-3 flex items-center gap-2">
+          <span id="kpiTotalTrend" class="text-[11px] px-2 py-0.5 rounded-full bg-white/10 font-medium">—</span>
+          <span class="text-[11px] opacity-60">vs. média mensal</span>
+        </div>
+      </div>
+    </div>
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 card-hover">
+      <div class="flex items-center justify-between">
+        <p class="text-[11px] font-semibold tracking-widest uppercase text-slate-500">VEÍCULOS</p>
+        <span class="w-7 h-7 rounded-full bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 flex items-center justify-center"><i class="fa-solid fa-car-side text-[12px]"></i></span>
+      </div>
+      <p id="kpiVehicles" class="mt-2 text-[22px] font-bold tracking-tight">0</p>
+      <p id="kpiVehiclesSub" class="mt-1 text-[11px] text-slate-500 dark:text-slate-400">ativos na frota</p>
+    </div>
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 card-hover">
+      <div class="flex items-center justify-between">
+        <p class="text-[11px] font-semibold tracking-widest uppercase text-slate-500">MANUTENÇÕES</p>
+        <span class="w-7 h-7 rounded-full bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400 flex items-center justify-center"><i class="fa-solid fa-screwdriver-wrench text-[12px]"></i></span>
+      </div>
+      <p id="kpiMaint" class="mt-2 text-[22px] font-bold tracking-tight">0</p>
+      <p id="kpiMaintSub" class="mt-1 text-[11px] text-slate-500">registros</p>
+    </div>
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 card-hover">
+      <div class="flex items-center justify-between">
+        <p class="text-[11px] font-semibold tracking-widest uppercase text-slate-500">CUSTO MÉDIO</p>
+        <span class="w-7 h-7 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center"><i class="fa-solid fa-chart-line text-[12px]"></i></span>
+      </div>
+      <p id="kpiAvg" class="mt-2 text-[22px] font-bold tracking-tight">R$ 0</p>
+      <p id="kpiAvgSub" class="mt-1 text-[11px] text-slate-500">por manutenção</p>
+    </div>
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 card-hover">
+      <div class="flex items-center justify-between">
+        <p class="text-[11px] font-semibold tracking-widest uppercase text-slate-500">MAIOR GASTO</p>
+        <span class="w-7 h-7 rounded-full bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center"><i class="fa-solid fa-triangle-exclamation text-[12px]"></i></span>
+      </div>
+      <p id="kpiWorst" class="mt-2 text-[14px] font-bold tracking-tight truncate">—</p>
+      <p id="kpiWorstSub" class="mt-1 text-[11px] text-rose-600 dark:text-rose-400 font-medium">veículo crítico</p>
+    </div>
+  </div>
+
+  <!-- Insights Bar -->
+  <div id="insightsBar" class="rounded-[16px] bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800/50 p-4 flex gap-3">
+    <div class="w-8 h-8 rounded-full bg-amber-500 text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-lightbulb text-[13px]"></i></div>
+    <div class="flex-1 min-w-0">
+      <p class="text-[12px] font-bold tracking-wide uppercase text-amber-800 dark:text-amber-200">INSIGHTS AUTOMÁTICOS • APURAÇÃO GERENCIAL</p>
+      <div id="insightsContent" class="mt-1.5 text-[13px] leading-relaxed text-amber-900/80 dark:text-amber-100/80 space-y-1">
+        <p>Carregue sua planilha para gerar insights automáticos: veículos com custo acima da média, sazonalidade, tipos de manutenção mais caros, fornecedores críticos, etc.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Charts Row 1 -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="lg:col-span-2 rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-[14px] flex items-center gap-2"><span class="w-1 h-4 rounded-full bg-sky-500"></span>Evolução Mensal de Custos • 2026</h3>
+        <div class="flex items-center gap-2">
+          <select id="yearFilter" class="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2.5 text-[12px] font-medium">
+            <option value="all">Todos os meses</option>
+            <option value="2026">2026</option>
+          </select>
+        </div>
+      </div>
+      <div class="h-[280px] relative"><canvas id="monthlyChart"></canvas></div>
+    </div>
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5">
+      <h3 class="font-bold text-[14px] flex items-center gap-2 mb-4"><span class="w-1 h-4 rounded-full bg-violet-500"></span>Por Tipo de Manutenção</h3>
+      <div class="h-[200px] relative"><canvas id="typeChart"></canvas></div>
+      <div id="typeLegend" class="mt-4 space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Charts Row 2 -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5">
+      <h3 class="font-bold text-[14px] flex items-center gap-2 mb-4"><span class="w-1 h-4 rounded-full bg-rose-500"></span>Top 8 Veículos por Custo</h3>
+      <div class="h-[320px] relative"><canvas id="vehicleChart"></canvas></div>
+    </div>
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5">
+      <h3 class="font-bold text-[14px] flex items-center gap-2 mb-4"><span class="w-1 h-4 rounded-full bg-emerald-500"></span>Custo por Categoria / Serviço</h3>
+      <div class="h-[320px] relative"><canvas id="categoryChart"></canvas></div>
+    </div>
+    <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 flex flex-col">
+      <h3 class="font-bold text-[14px] flex items-center gap-2 mb-4"><span class="w-1 h-4 rounded-full bg-amber-500"></span>Ranking Crítico</h3>
+      <div id="criticalList" class="space-y-2.5 flex-1 overflow-auto scrollbar-thin pr-1"></div>
+      <div class="mt-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+        <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Recomendação Gerencial</p>
+        <p id="recommendation" class="mt-1 text-[12px] leading-relaxed text-slate-700 dark:text-slate-300">—</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters + Table -->
+  <div class="rounded-[18px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+    <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <h3 class="font-bold text-[14px] flex items-center gap-2"><span class="w-1 h-4 rounded-full bg-slate-900 dark:bg-white"></span>Detalhamento • Base Completa <span id="tableCount" class="ml-2 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium">0 registros</span></h3>
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-[12px] text-slate-400"></i>
+          <input id="searchInput" placeholder="Buscar placa, veículo, serviço..." class="h-9 pl-9 pr-3 w-[260px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-[13px] focus:outline-none focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500">
+        </div>
+        <select id="vehicleFilter" class="h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-[13px] font-medium min-w-[160px]">
+          <option value="all">Todos veículos</option>
+        </select>
+        <select id="typeFilter" class="h-9 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 text-[13px] font-medium">
+          <option value="all">Todos tipos</option>
+        </select>
+        <button onclick="clearFilters()" class="h-9 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[13px] font-medium hover:bg-slate-50 dark:hover:bg-slate-700">Limpar</button>
+      </div>
+    </div>
+    <div class="overflow-auto max-h-[520px] scrollbar-thin">
+      <table class="w-full text-left border-collapse">
+        <thead class="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800/80 backdrop-blur border-b border-slate-200 dark:border-slate-700">
+          <tr id="tableHead" class="text-[11px] font-semibold tracking-widest uppercase text-slate-500"></tr>
+        </thead>
+        <tbody id="tableBody" class="text-[13px]"></tbody>
+      </table>
+    </div>
+    <div class="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-between text-[12px] text-slate-500">
+      <span id="tableFooter">Nenhum dado carregado</span>
+      <div class="flex items-center gap-2">
+        <span>Mostrando</span>
+        <select id="pageSize" class="h-7 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 text-[12px]">
+          <option value="25">25</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+          <option value="9999">Todos</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="rounded-[16px] bg-slate-900 dark:bg-black text-white p-5 flex flex-col md:flex-row items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center"><i class="fa-solid fa-shield-halved text-[14px]"></i></div>
+      <div>
+        <p class="text-[13px] font-semibold">Relatório confidencial • Uso interno</p>
+        <p class="text-[11px] opacity-60">Gerado automaticamente pelo Dashboard Frota 2026 • Dados processados localmente no navegador</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span class="text-[11px] px-2.5 py-1 rounded-full bg-white/10 border border-white/10">LGPD Compliant</span>
+      <span class="text-[11px] px-2.5 py-1 rounded-full bg-white/10 border border-white/10">Offline-first</span>
+    </div>
+  </div>
+</main>
+
+<script>
+// ---------- State ----------
+let rawData = [];
+let filteredData = [];
+let columns = [];
+let charts = {};
+let detected = { cost:null, vehicle:null, date:null, type:null, category:null, km:null, supplier:null };
+
+const fmtBRL = new Intl.NumberFormat('pt-BR', { style:'currency', currency:'BRL' });
+const fmtNum = new Intl.NumberFormat('pt-BR');
+
+function nowStr(){ return new Date().toLocaleString('pt-BR'); }
+document.getElementById('lastUpdate').textContent = nowStr();
+
+// ---------- Theme ----------
+const themeToggle = document.getElementById('themeToggle');
+function applyTheme(t){
+  if(t==='dark') document.documentElement.classList.add('dark');
+  else document.documentElement.classList.remove('dark');
+  localStorage.setItem('fleet-theme', t);
+  setTimeout(()=>{ Object.values(charts).forEach(c=>c && c.resize()); }, 100);
+}
+applyTheme(localStorage.getItem('fleet-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+themeToggle.onclick = ()=> applyTheme(document.documentElement.classList.contains('dark') ? 'light' : 'dark');
+
+// ---------- Upload ----------
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+uploadZone.addEventListener('click', (e)=>{ if(!e.target.closest('button')) fileInput.click(); });
+uploadZone.addEventListener('dragover', (e)=>{ e.preventDefault(); uploadZone.classList.add('!border-sky-500','bg-sky-50'); });
+uploadZone.addEventListener('dragleave', ()=> uploadZone.classList.remove('!border-sky-500','bg-sky-50'));
+uploadZone.addEventListener('drop', (e)=>{ e.preventDefault(); uploadZone.classList.remove('!border-sky-500','bg-sky-50'); const f=e.dataTransfer.files[0]; if(f) handleFile(f); });
+fileInput.addEventListener('change', ()=>{ if(fileInput.files[0]) handleFile(fileInput.files[0]); });
+
+function showFileInfo(name, rows){
+  document.getElementById('fileInfo').classList.remove('hidden');
+  document.getElementById('fileInfoText').textContent = `${name} • ${rows} registros • colunas detectadas: ${Object.values(detected).filter(Boolean).join(', ') || '—'}`;
+}
+
+function clearData(){
+  rawData=[]; filteredData=[]; columns=[]; detected={cost:null, vehicle:null, date:null, type:null, category:null, km:null, supplier:null};
+  document.getElementById('fileInfo').classList.add('hidden');
+  renderAll();
+}
+
+// ---------- File Handling ----------
+async function handleFile(file){
+  const name = file.name;
+  try{
+    // Auto-upload to server for apuração real (if API available)
+    try{
+      const buf = await file.arrayBuffer();
+      // try to save to server (same origin and 8001 fallback)
+      const targets = ['/api/save-fleet', 'http://localhost:8001/api/save-fleet', 'https://8001-'+location.hostname.split('-').slice(1).join('-')+'/api/save-fleet'];
+      for(let url of targets){
+        try{
+          await fetch(url, {method:'POST', body: buf, headers:{'Content-Type':'text/html'}});
+          console.log('Uploaded to', url);
+          break;
+        }catch(e){ console.warn('Upload fail', url, e); }
+      }
+    }catch(e){ console.warn('Auto-upload failed', e); }
+
+    if(name.toLowerCase().endsWith('.html') || name.toLowerCase().endsWith('.htm')){
+      const text = await file.text();
+      parseHTMLTable(text, name);
+    } else if(name.toLowerCase().endsWith('.csv')){
+      const text = await file.text();
+      parseCSV(text, name);
+    } else if(name.toLowerCase().endsWith('.xlsx') || name.toLowerCase().endsWith('.xls')){
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, {header:1, defval:''});
+      parseArray(json, name);
+    } else {
+      const text = await file.text();
+      // try html first
+      if(text.includes('<table')) parseHTMLTable(text, name);
+      else parseCSV(text, name);
+    }
+  }catch(e){
+    console.error(e);
+    alert('Erro ao ler arquivo: '+e.message);
+  }
+}
+
+function parseHTMLTable(htmlString, fileName){
+  const doc = new DOMParser().parseFromString(htmlString, 'text/html');
+  const tables = Array.from(doc.querySelectorAll('table'));
+  if(!tables.length){ alert('Nenhuma tabela encontrada no HTML'); return; }
+  // pick largest table
+  let best = tables[0], maxRows=0;
+  tables.forEach(t=>{
+    const rows = t.querySelectorAll('tr').length;
+    if(rows>maxRows){ maxRows=rows; best=t; }
+  });
+  const rows = Array.from(best.querySelectorAll('tr'));
+  const data = rows.map(tr=> Array.from(tr.querySelectorAll('th, td')).map(td=> td.textContent.trim().replace(/\s+/g,' ').trim()));
+  parseArray(data, fileName);
+}
+
+function parseCSV(text, fileName){
+  // simple CSV split, handling quotes
+  const lines = text.split(/\r?\n/).filter(l=>l.trim());
+  const data = lines.map(line=>{
+    const result=[]; let cur='', inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'){ inQ=!inQ; }
+      else if(ch===',' || ch===';' && !inQ){ result.push(cur.trim()); cur=''; }
+      else cur+=ch;
+    }
+    result.push(cur.trim());
+    return result.map(c=>c.replace(/^"|"$/g,'').trim());
+  });
+  parseArray(data, fileName);
+}
+
+function parseArray(arr, fileName){
+  if(!arr.length) return;
+  // clean empty rows
+  let cleaned = arr.filter(r=> r.join('').trim() !== '');
+  if(!cleaned.length) return;
+  // detect header: first row with at least 2 non-empty and not all numbers
+  let headerRow = 0;
+  // assume first row is header
+  columns = cleaned[0].map(h=> h.trim() || `Coluna ${Math.random().toString(36).slice(2,5)}`);
+  let body = cleaned.slice(1);
+  // if first row looks like data (numbers), generate headers
+  const headerLooksData = columns.every(c=> !isNaN(parseFloat(c.replace(/[R$\s\.]/g,'').replace(',','.'))));
+  if(headerLooksData){
+    columns = columns.map((_,i)=> `Coluna ${i+1}`);
+    body = cleaned;
+  }
+  rawData = body.map((r,i)=>{
+    const obj={_idx:i};
+    columns.forEach((c, idx)=> obj[c]= (r[idx]!==undefined ? r[idx] : ''));
+    return obj;
+  });
+  autoDetectColumns();
+  showFileInfo(fileName, rawData.length);
+  renderAll();
+}
+
+function autoDetectColumns(){
+  const lower = columns.map(c=> c.toLowerCase());
+  const find = (keywords)=>{
+    for(let k of keywords){
+      const idx = lower.findIndex(h=> h.includes(k));
+      if(idx!==-1) return columns[idx];
+    }
+    return null;
+  };
+  detected.cost = find(['custo','valor','total','preço','preco','amount','cost','r$']);
+  detected.vehicle = find(['placa','veiculo','veículo','carro','frota','modelo','veic']);
+  detected.date = find(['data','mês','mes','ano','competencia','competência','dt']);
+  detected.type = find(['tipo','manut','preventiva','corretiva','categoria tipo']);
+  detected.category = find(['serviço','servico','descrição','descricao','peça','peca','categoria','item','motivo']);
+  detected.km = find(['km','quilometragem','hodometro','odometro']);
+  detected.supplier = find(['fornecedor','oficina','prestador','empresa']);
+  // fallback: if cost not found, look for column with most currency-like values
+  if(!detected.cost){
+    let bestCol=null, bestScore=0;
+    columns.forEach(col=>{
+      let score=0;
+      rawData.slice(0,20).forEach(row=>{
+        const v = String(row[col]||'');
+        if(/R\$|[\d]+\,[\d]{2}/.test(v) || /^\d+(\.\d{3})*,\d{2}$/.test(v) || /^\d+(\.\d+)?$/.test(v)) score++;
+      });
+      if(score>bestScore){ bestScore=score; bestCol=col; }
+    });
+    if(bestCol) detected.cost=bestCol;
+  }
+  if(!detected.vehicle){
+    // most repeated non-numeric
+    detected.vehicle = columns[0];
+  }
+  if(!detected.date) detected.date = columns.find(c=> lower[columns.indexOf(c)].includes('data')) || columns[1] || columns[0];
+}
+
+// ---------- Helpers ----------
+function parseCost(val){
+  if(val==null) return 0;
+  let s = String(val).trim();
+  if(!s) return 0;
+  // remove R$, spaces
+  s = s.replace(/R\$/gi,'').trim();
+  // handle "1.234,56" -> 1234.56, "1234,56" -> 1234.56, "1234.56" -> 1234.56
+  // if contains both . and , -> . is thousand, , is decimal
+  if(s.includes('.') && s.includes(',')){
+    s = s.replace(/\./g,'').replace(',','.');
+  } else if(s.includes(',')){
+    // if single comma and 2 decimals at end -> decimal comma
+    if(/,\d{2}$/.test(s)) s = s.replace(',','.');
+    else s = s.replace(',','.');
+  }
+  // remove any non numeric except . and -
+  s = s.replace(/[^0-9\.\-]/g,'');
+  const n = parseFloat(s);
+  return isNaN(n)?0:n;
+}
+
+function parseDate(val){
+  if(!val) return null;
+  let s = String(val).trim();
+  // try dd/mm/yyyy, dd-mm-yyyy, yyyy-mm-dd, mm/yyyy, etc.
+  // normalize
+  // if contains "/" or "-"
+  // try to extract month/year
+  let d=null;
+  // dd/mm/yyyy
+  let m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if(m){
+    let day=parseInt(m[1]), month=parseInt(m[2])-1, year=parseInt(m[3]);
+    if(year<100) year+=2000;
+    d=new Date(year, month, day);
+  } else {
+    m = s.match(/(\d{1,2})[\/\-](\d{4})/);
+    if(m){
+      let month=parseInt(m[1])-1, year=parseInt(m[2]);
+      d=new Date(year, month, 1);
+    } else {
+      // try yyyy-mm
+      m = s.match(/(\d{4})[\/\-](\d{1,2})/);
+      if(m){
+        let year=parseInt(m[1]), month=parseInt(m[2])-1;
+        d=new Date(year, month, 1);
+      } else {
+        // fallback Date parse
+        const parsed = new Date(s);
+        if(!isNaN(parsed)) d=parsed;
+      }
+    }
+  }
+  return d;
+}
+
+function getMonthKey(date){
+  if(!date) return 'Sem data';
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`;
+}
+function formatMonthKey(key){
+  if(key==='Sem data') return key;
+  const [y,m]=key.split('-');
+  const months=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+  return `${months[parseInt(m)-1]}/${y}`;
+}
+
+// ---------- Rendering ----------
+function renderAll(){
+  filteredData = [...rawData];
+  applyFilters();
+  renderKPIs();
+  renderCharts();
+  renderTable();
+  renderInsights();
+  document.getElementById('lastUpdate').textContent = nowStr();
+}
+
+function renderKPIs(){
+  const costCol = detected.cost;
+  const vehCol = detected.vehicle;
+  let total=0;
+  rawData.forEach(r=> total+= parseCost(r[costCol]));
+  const avg = rawData.length ? total / rawData.length : 0;
+  const vehicles = new Set(rawData.map(r=> String(r[vehCol]||'').trim()).filter(Boolean));
+  // worst vehicle
+  const byVeh={};
+  rawData.forEach(r=>{
+    const v = String(r[vehCol]||'Desconhecido').trim() || 'Desconhecido';
+    const c = parseCost(r[costCol]);
+    byVeh[v]=(byVeh[v]||0)+c;
+  });
+  const worst = Object.entries(byVeh).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById('kpiTotal').textContent = fmtBRL.format(total);
+  document.getElementById('kpiTotalTrend').textContent = rawData.length ? `${fmtBRL.format(avg*30)} média proj. mês` : '—';
+  document.getElementById('kpiVehicles').textContent = fmtNum.format(vehicles.size || 0);
+  document.getElementById('kpiVehiclesSub').textContent = vehicles.size ? `${vehicles.size} placas distintas` : 'ativos na frota';
+  document.getElementById('kpiMaint').textContent = fmtNum.format(rawData.length);
+  document.getElementById('kpiMaintSub').textContent = `${rawData.length} registros`;
+  document.getElementById('kpiAvg').textContent = fmtBRL.format(avg);
+  document.getElementById('kpiAvgSub').textContent = 'por manutenção';
+  document.getElementById('kpiWorst').textContent = worst ? worst[0].slice(0,18) : '—';
+  document.getElementById('kpiWorstSub').textContent = worst ? fmtBRL.format(worst[1]) : 'veículo crítico';
+}
+
+function renderCharts(){
+  const costCol = detected.cost;
+  const vehCol = detected.vehicle;
+  const dateCol = detected.date;
+  const typeCol = detected.type;
+  const catCol = detected.category;
+
+  // Monthly
+  const monthly={};
+  rawData.forEach(r=>{
+    const d = parseDate(r[dateCol]);
+    const key = d ? getMonthKey(d) : 'Sem data';
+    const c = parseCost(r[costCol]);
+    monthly[key]=(monthly[key]||0)+c;
+  });
+  const sortedMonths = Object.keys(monthly).filter(k=>k!=='Sem data').sort();
+  if(monthly['Sem data']) sortedMonths.push('Sem data');
+  const monthlyLabels = sortedMonths.map(formatMonthKey);
+  const monthlyValues = sortedMonths.map(k=> monthly[k]);
+
+  // Type
+  const byType={};
+  if(typeCol){
+    rawData.forEach(r=>{
+      const t = String(r[typeCol]||'Não informado').trim() || 'Não informado';
+      const c = parseCost(r[costCol]);
+      byType[t]=(byType[t]||0)+c;
+    });
+  } else {
+    byType['Geral']= Object.values(monthly).reduce((a,b)=>a+b,0);
+  }
+
+  // Vehicle top 8
+  const byVeh={};
+  rawData.forEach(r=>{
+    const v = String(r[vehCol]||'Desconhecido').trim() || 'Desconhecido';
+    const c = parseCost(r[costCol]);
+    byVeh[v]=(byVeh[v]||0)+c;
+  });
+  const topVeh = Object.entries(byVeh).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  // Category
+  const byCat={};
+  const catSource = catCol || typeCol || vehCol;
+  rawData.forEach(r=>{
+    const cat = String(r[catSource]||'Outros').trim().slice(0,30) || 'Outros';
+    const c = parseCost(r[costCol]);
+    byCat[cat]=(byCat[cat]||0)+c;
+  });
+  const topCat = Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,8);
+
+  // Destroy old
+  Object.values(charts).forEach(c=>{ try{c.destroy();}catch{} });
+
+  // Monthly Chart
+  const ctxM = document.getElementById('monthlyChart').getContext('2d');
+  charts.monthly = new Chart(ctxM, {
+    type:'line',
+    data:{
+      labels: monthlyLabels,
+      datasets:[{
+        label:'Custo',
+        data: monthlyValues,
+        borderColor:'#0ea5e9',
+        backgroundColor:(ctx)=>{
+          const g=ctx.chart.ctx.createLinearGradient(0,0,0,280);
+          g.addColorStop(0,'rgba(14,165,233,0.25)');
+          g.addColorStop(1,'rgba(14,165,233,0)');
+          return g;
+        },
+        fill:true,
+        tension:0.4,
+        borderWidth:2.5,
+        pointRadius: monthlyLabels.length>12?0:4,
+        pointBackgroundColor:'#0ea5e9',
+        pointBorderColor:'#fff',
+        pointBorderWidth:2
+      }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{ mode:'index', intersect:false },
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(ctx)=> fmtBRL.format(ctx.raw) } } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{ font:{size:11}, maxRotation:0 } },
+        y:{ grid:{ color:'rgba(148,163,184,0.15)' }, ticks:{ callback:(v)=> fmtBRL.format(v), font:{size:11} } }
+      }
+    }
+  });
+
+  // Type Chart
+  const ctxT = document.getElementById('typeChart').getContext('2d');
+  const typeColors=['#8b5cf6','#06b6d4','#f59e0b','#10b981','#ef4444','#6366f1','#ec4899','#14b8a6'];
+  charts.type = new Chart(ctxT, {
+    type:'doughnut',
+    data:{
+      labels: Object.keys(byType),
+      datasets:[{ data: Object.values(byType), backgroundColor:typeColors.slice(0,Object.keys(byType).length), borderWidth:0, hoverOffset:6 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false, cutout:'62%',
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(ctx)=> `${ctx.label}: ${fmtBRL.format(ctx.raw)} (${(ctx.raw/Object.values(byType).reduce((a,b)=>a+b,0)*100).toFixed(1)}%)` } } }
+    }
+  });
+  // custom legend
+  const legendEl = document.getElementById('typeLegend');
+  legendEl.innerHTML = Object.entries(byType).map(([k,v],i)=>{
+    const total = Object.values(byType).reduce((a,b)=>a+b,0);
+    const pct = total ? (v/total*100).toFixed(1) : 0;
+    return `<div class="flex items-center justify-between text-[12px]"><div class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full" style="background:${typeColors[i%typeColors.length]}"></span><span class="font-medium truncate max-w-[160px]">${k}</span></div><div class="flex items-center gap-2"><span class="font-semibold">${fmtBRL.format(v)}</span><span class="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">${pct}%</span></div></div>`;
+  }).join('');
+
+  // Vehicle Chart
+  const ctxV = document.getElementById('vehicleChart').getContext('2d');
+  charts.vehicle = new Chart(ctxV, {
+    type:'bar',
+    data:{
+      labels: topVeh.map(v=> v[0].slice(0,12)),
+      datasets:[{ label:'Custo', data: topVeh.map(v=> v[1]), backgroundColor:'#ef4444', borderRadius:8, borderSkipped:false, barThickness: topVeh.length>6?12:18 }]
+    },
+    options:{
+      indexAxis:'y',
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(ctx)=> fmtBRL.format(ctx.raw) } } },
+      scales:{
+        x:{ grid:{ color:'rgba(148,163,184,0.15)' }, ticks:{ callback:(v)=> fmtBRL.format(v), font:{size:11} } },
+        y:{ grid:{display:false}, ticks:{ font:{size:11, weight:500} } }
+      }
+    }
+  });
+
+  // Category Chart
+  const ctxC = document.getElementById('categoryChart').getContext('2d');
+  charts.category = new Chart(ctxC, {
+    type:'bar',
+    data:{
+      labels: topCat.map(v=> v[0]),
+      datasets:[{ label:'Custo', data: topCat.map(v=> v[1]), backgroundColor:'#10b981', borderRadius:8, barThickness:14 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label:(ctx)=> fmtBRL.format(ctx.raw) } } },
+      scales:{
+        x:{ grid:{display:false}, ticks:{ font:{size:10}, maxRotation:45, minRotation:20 } },
+        y:{ grid:{ color:'rgba(148,163,184,0.15)' }, ticks:{ callback:(v)=> fmtBRL.format(v), font:{size:11} } }
+      }
+    }
+  });
+
+  // Critical list
+  const criticalEl = document.getElementById('criticalList');
+  criticalEl.innerHTML = topVeh.map(([veh,cost],idx)=>{
+    const pct = (cost / (Object.values(byVeh).reduce((a,b)=>a+b,0)||1)*100).toFixed(1);
+    const level = idx===0 ? 'bg-rose-500' : idx<3 ? 'bg-amber-500' : 'bg-slate-300 dark:bg-slate-600';
+    return `<div class="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/30">
+      <div class="w-8 h-8 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center font-bold text-[12px]">${idx+1}</div>
+      <div class="flex-1 min-w-0">
+        <p class="font-semibold text-[13px] truncate">${veh}</p>
+        <div class="mt-1 h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden"><div class="h-full rounded-full ${level}" style="width:${pct}%"></div></div>
+      </div>
+      <div class="text-right">
+        <p class="font-bold text-[12px]">${fmtBRL.format(cost)}</p>
+        <p class="text-[11px] text-slate-500">${pct}% do total</p>
+      </div>
+    </div>`;
+  }).join('') || '<p class="text-[13px] text-slate-500">Sem dados</p>';
+}
+
+function renderInsights(){
+  const costCol = detected.cost;
+  const vehCol = detected.vehicle;
+  const dateCol = detected.date;
+  const typeCol = detected.type;
+  if(!rawData.length){
+    document.getElementById('insightsContent').innerHTML = '<p>Carregue sua planilha para gerar insights automáticos.</p>';
+    document.getElementById('recommendation').textContent = '—';
+    return;
+  }
+  const total = rawData.reduce((s,r)=> s+parseCost(r[costCol]),0);
+  const avg = total / rawData.length;
+  // monthly trend
+  const monthly={};
+  rawData.forEach(r=>{
+    const d=parseDate(r[dateCol]);
+    const k=d?getMonthKey(d):'Sem data';
+    monthly[k]=(monthly[k]||0)+parseCost(r[costCol]);
+  });
+  const monthsSorted = Object.keys(monthly).filter(k=>k!=='Sem data').sort();
+  let trend='';
+  if(monthsSorted.length>=2){
+    const last = monthly[monthsSorted[monthsSorted.length-1]];
+    const prev = monthly[monthsSorted[monthsSorted.length-2]];
+    const diff = prev ? ((last-prev)/prev*100) : 0;
+    trend = diff>10 ? `Alta de ${diff.toFixed(1)}% no último mês vs anterior` : diff<-10 ? `Queda de ${Math.abs(diff).toFixed(1)}% no último mês` : `Estável (${diff.toFixed(1)}% vs mês anterior)`;
+  }
+  // worst type
+  let typeInsight='';
+  if(typeCol){
+    const byType={};
+    rawData.forEach(r=>{ const t=String(r[typeCol]||'NI'); byType[t]=(byType[t]||0)+parseCost(r[costCol]); });
+    const worstType = Object.entries(byType).sort((a,b)=>b[1]-a[1])[0];
+    if(worstType) typeInsight = `Tipo "${worstType[0]}" representa ${((worstType[1]/total)*100).toFixed(1)}% do custo total (${fmtBRL.format(worstType[1])}).`;
+  }
+  // vehicle concentration
+  const byVeh={};
+  rawData.forEach(r=>{ const v=String(r[vehCol]||'Desconhecido'); byVeh[v]=(byVeh[v]||0)+parseCost(r[costCol]); });
+  const sortedVeh = Object.entries(byVeh).sort((a,b)=>b[1]-a[1]);
+  const top3Pct = sortedVeh.slice(0,3).reduce((s,[,v])=>s+v,0)/total*100;
+  const concentration = top3Pct>60 ? `Alta concentração: Top 3 veículos consomem ${top3Pct.toFixed(1)}% do orçamento.` : `Distribuição equilibrada: Top 3 = ${top3Pct.toFixed(1)}%.`;
+
+  const insights = [
+    `💰 Custo total apurado: <b>${fmtBRL.format(total)}</b> em ${rawData.length} manutenções. Ticket médio ${fmtBRL.format(avg)}.`,
+    trend ? `📈 <b>${trend}</b>.` : '',
+    typeInsight ? `🔧 ${typeInsight}` : '',
+    `🚛 ${concentration}`,
+    sortedVeh[0] ? `⚠️ Veículo crítico: <b>${sortedVeh[0][0]}</b> com ${fmtBRL.format(sortedVeh[0][1])} (${((sortedVeh[0][1]/total)*100).toFixed(1)}% do total). Avaliar substituição ou revisão profunda.` : ''
+  ].filter(Boolean);
+
+  document.getElementById('insightsContent').innerHTML = insights.map(i=> `<p>${i}</p>`).join('');
+
+  let rec='';
+  if(top3Pct>60) rec='Focar em plano de renovação/substituição dos 3 veículos mais caros. Analisar histórico de falhas repetitivas.';
+  else if(typeInsight && typeInsight.includes('Corretiva')) rec='Alta de corretivas indica falha na preventiva. Revisar plano de manutenção preventiva e checklist diário.';
+  else if(trend && trend.includes('Alta')) rec='Investigar causas da alta recente: aumento de peças, km rodado, ou fornecedores. Negociar contratos.';
+  else rec='Manter acompanhamento mensal. Definir meta de redução de 10% no custo médio por km rodado.';
+  document.getElementById('recommendation').textContent = rec;
+}
+
+// ---------- Table ----------
+let currentPage=0;
+function renderTable(){
+  const headEl = document.getElementById('tableHead');
+  const bodyEl = document.getElementById('tableBody');
+  headEl.innerHTML = columns.map(c=> `<th class="px-4 py-3 text-left whitespace-nowrap">${c}</th>`).join('');
+  // populate filters
+  const vehCol = detected.vehicle;
+  const typeCol = detected.type;
+  if(vehCol){
+    const vehicles = [...new Set(rawData.map(r=> String(r[vehCol]||'').trim()).filter(Boolean))].sort();
+    const sel = document.getElementById('vehicleFilter');
+    const current = sel.value;
+    sel.innerHTML = '<option value="all">Todos veículos</option>' + vehicles.map(v=> `<option value="${v.replace(/"/g,'&quot;')}">${v}</option>`).join('');
+    if([...sel.options].some(o=>o.value===current)) sel.value=current;
+  }
+  if(typeCol){
+    const types = [...new Set(rawData.map(r=> String(r[typeCol]||'').trim()).filter(Boolean))].sort();
+    const sel = document.getElementById('typeFilter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="all">Todos tipos</option>' + types.map(t=> `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
+    if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+  }
+  applyFilters();
+}
+
+function applyFilters(){
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  const vehF = document.getElementById('vehicleFilter').value;
+  const typeF = document.getElementById('typeFilter').value;
+  const costCol = detected.cost;
+  const vehCol = detected.vehicle;
+  const typeCol = detected.type;
+
+  filteredData = rawData.filter(r=>{
+    if(search){
+      const match = columns.some(c=> String(r[c]||'').toLowerCase().includes(search));
+      if(!match) return false;
+    }
+    if(vehF!=='all' && String(r[vehCol]||'')!==vehF) return false;
+    if(typeF!=='all' && String(r[typeCol]||'')!==typeF) return false;
+    return true;
+  });
+  renderTableBody();
+}
+
+function renderTableBody(){
+  const bodyEl = document.getElementById('tableBody');
+  const pageSize = parseInt(document.getElementById('pageSize').value);
+  const toShow = pageSize===9999 ? filteredData : filteredData.slice(0, pageSize);
+  bodyEl.innerHTML = toShow.map((r,i)=>{
+    const isHigh = detected.cost && parseCost(r[detected.cost]) > (rawData.reduce((s,x)=>s+parseCost(x[detected.cost]),0)/rawData.length*1.8);
+    return `<tr class="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50 ${isHigh?'bg-amber-50/50 dark:bg-amber-950/20':''}">
+      ${columns.map(c=>{
+        const val = String(r[c]||'');
+        const isCost = c===detected.cost;
+        return `<td class="px-4 py-2.5 whitespace-nowrap ${isCost?'font-mono font-semibold':''} ${isCost && isHigh?'text-amber-700 dark:text-amber-300':''}">${isCost && val ? fmtBRL.format(parseCost(val)) : val.slice(0,120)}</td>`;
+      }).join('')}
+    </tr>`;
+  }).join('');
+  document.getElementById('tableCount').textContent = `${fmtNum.format(filteredData.length)} registros`;
+  document.getElementById('tableFooter').textContent = `Exibindo ${toShow.length} de ${filteredData.length} filtrados • ${rawData.length} total • ${columns.length} colunas detectadas`;
+}
+
+document.getElementById('searchInput').addEventListener('input', ()=>{ applyFilters(); });
+document.getElementById('vehicleFilter').addEventListener('change', ()=>{ applyFilters(); });
+document.getElementById('typeFilter').addEventListener('change', ()=>{ applyFilters(); });
+document.getElementById('pageSize').addEventListener('change', ()=>{ renderTableBody(); });
+function clearFilters(){
+  document.getElementById('searchInput').value='';
+  document.getElementById('vehicleFilter').value='all';
+  document.getElementById('typeFilter').value='all';
+  applyFilters();
+}
+
+// ---------- Exports ----------
+function exportExcel(){
+  if(!rawData.length){ alert('Nenhum dado para exportar'); return; }
+  const ws = XLSX.utils.json_to_sheet(filteredData.length?filteredData:rawData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Frota 2026');
+  // second sheet with summary
+  const summary = [
+    ['Métrica','Valor'],
+    ['Custo Total', document.getElementById('kpiTotal').textContent],
+    ['Veículos', document.getElementById('kpiVehicles').textContent],
+    ['Manutenções', document.getElementById('kpiMaint').textContent],
+    ['Custo Médio', document.getElementById('kpiAvg').textContent],
+    ['Gerado em', nowStr()]
+  ];
+  const ws2 = XLSX.utils.aoa_to_sheet(summary);
+  XLSX.utils.book_append_sheet(wb, ws2, 'Resumo');
+  XLSX.writeFile(wb, `Apuracao_Frota_2026_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+async function exportPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF('p','mm','a4');
+  doc.setFontSize(16);
+  doc.text('Apuração Frota 2026 - Relatório Gerencial', 14, 18);
+  doc.setFontSize(10);
+  doc.text(`Gerado em: ${nowStr()} | Total: ${document.getElementById('kpiTotal').textContent} | Veículos: ${document.getElementById('kpiVehicles').textContent} | Manutenções: ${document.getElementById('kpiMaint').textContent}`, 14, 26);
+  doc.setFontSize(9);
+  const insights = document.getElementById('insightsContent').innerText;
+  const lines = doc.splitTextToSize(insights, 180);
+  doc.text(lines, 14, 34);
+  // snapshot charts
+  try{
+    const canvas = await html2canvas(document.querySelector('main'), { scale:0.8, backgroundColor: document.documentElement.classList.contains('dark') ? '#020617' : '#f8fafc' });
+    const imgData = canvas.toDataURL('image/png');
+    const imgProps = doc.getImageProperties(imgData);
+    const pdfWidth = doc.internal.pageSize.getWidth() - 28;
+    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+    doc.addPage();
+    doc.addImage(imgData, 'PNG', 14, 10, pdfWidth, pdfHeight);
+  }catch(e){ console.warn(e); }
+  doc.save(`Relatorio_Frota_2026_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+// ---------- Demo Data ----------
+function loadDemo(){
+  const demo = [
+    ['Placa','Veículo','Data','Tipo','Serviço','KM','Fornecedor','Custo','Status'],
+    ['ABC1D23','Fiat Strada 2022','15/01/2026','Preventiva','Troca de óleo + filtros','45230','Oficina Central','R$ 485,00','Concluído'],
+    ['ABC1D23','Fiat Strada 2022','03/02/2026','Corretiva','Freios - pastilha e disco','47890','Freios & Cia','R$ 1.280,00','Concluído'],
+    ['XYZ9K88','VW Saveiro 2021','22/01/2026','Preventiva','Revisão 40k','61200','VW Autorizada','R$ 890,00','Concluído'],
+    ['XYZ9K88','VW Saveiro 2021','18/02/2026','Corretiva','Embreagem completa','62500','Oficina Central','R$ 2.450,00','Concluído'],
+    ['JKL5M42','Fiat Toro 2023','10/01/2026','Preventiva','Alinhamento + balanceamento','23400','Pneus Já','R$ 320,00','Concluído'],
+    ['JKL5M42','Fiat Toro 2023','28/02/2026','Corretiva','Suspensão dianteira','26100','Oficina Central','R$ 1.850,00','Concluído'],
+    ['QWE7U91','Renault Master 2022','05/01/2026','Preventiva','Troca pneus traseiros','78300','Pneus Já','R$ 2.100,00','Concluído'],
+    ['QWE7U91','Renault Master 2022','12/02/2026','Corretiva','Motor - correia dentada','79500','Diesel Master','R$ 3.200,00','Pendente'],
+    ['ABC1D23','Fiat Strada 2022','20/03/2026','Preventiva','Revisão elétrica','51200','Elétrica Frota','R$ 650,00','Concluído'],
+    ['XYZ9K88','VW Saveiro 2021','25/03/2026','Preventiva','Ar condicionado','63800','Clima Car','R$ 480,00','Concluído'],
+    ['JKL5M42','Fiat Toro 2023','15/03/2026','Corretiva','Câmbio - trambulador','27800','Câmbio Express','R$ 1.920,00','Concluído'],
+    ['QWE7U91','Renault Master 2022','30/03/2026','Preventiva','Filtros diesel','81200','Diesel Master','R$ 720,00','Concluído'],
+    ['RTY3P10','Fiat Fiorino 2020','08/01/2026','Corretiva','Bateria + alternador','92300','Elétrica Frota','R$ 1.100,00','Concluído'],
+    ['RTY3P10','Fiat Fiorino 2020','19/02/2026','Corretiva','Motor de arranque','93500','Elétrica Frota','R$ 890,00','Concluído'],
+    ['RTY3P10','Fiat Fiorino 2020','22/03/2026','Preventiva','Troca óleo','94800','Oficina Central','R$ 395,00','Concluído'],
+    ['ABC1D23','Fiat Strada 2022','10/04/2026','Preventiva','Pneus dianteiros','53400','Pneus Já','R$ 1.150,00','Concluído'],
+    ['XYZ9K88','VW Saveiro 2021','12/04/2026','Corretiva','Suspensão traseira','65200','Oficina Central','R$ 1.430,00','Concluído'],
+    ['JKL5M42','Fiat Toro 2023','18/04/2026','Preventiva','Revisão 30k','29500','VW Autorizada','R$ 1.100,00','Agendado'],
+    ['QWE7U91','Renault Master 2022','25/04/2026','Preventiva','Freios completo','83400','Freios & Cia','R$ 1.890,00','Concluído'],
+    ['RTY3P10','Fiat Fiorino 2020','28/04/2026','Corretiva','Caixa direção','96200','Oficina Central','R$ 2.300,00','Pendente'],
+  ];
+  parseArray(demo, 'DEMO_Frota_2026.xlsx');
+}
+
+// Auto-load demo on start if no file
+setTimeout(()=>{ if(!rawData.length) loadDemo(); }, 300);
+</script>
+</body>
+</html>
